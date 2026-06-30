@@ -115,8 +115,13 @@ async function requireDraft(id: string) {
 // ── CRUD ─────────────────────────────────────────────────────────────────────
 
 export async function createTest(input: CreateTestInput, adminId: string) {
+  if (!input.title || input.title.trim() === "") {
+    throw Errors.badRequest("Test title is required.", ErrorCode.VALIDATION_ERROR);
+  }
+
   const testData: Prisma.TestUncheckedCreateInput = {
     ...input,
+    title: input.title, // explicit, guaranteed-defined assignment (fixes TS2322)
     price: input.price != null ? new Prisma.Decimal(input.price) : null,
     status: TestStatus.DRAFT,
     createdById: adminId,
