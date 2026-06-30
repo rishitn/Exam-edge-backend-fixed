@@ -90,7 +90,7 @@ const TEST_DETAIL_SELECT = {
   },
 } satisfies Prisma.TestSelect;
 
-// ── Helper ───────────────────────────────────────────────────────────
+// ── Helper ───────────────────────────────────────────────────────────────────
 
 async function requireTest(id: string) {
   const test = await prisma.test.findUnique({
@@ -112,7 +112,7 @@ async function requireDraft(id: string) {
   return test;
 }
 
-// ── CRUD ────────────────────────────────────────────────────────────
+// ── CRUD ─────────────────────────────────────────────────────────────────────
 
 export async function createTest(input: CreateTestInput, adminId: string) {
   const test = await prisma.test.create({
@@ -197,7 +197,7 @@ export async function deleteTest(id: string, adminId: string) {
   log.info({ testId: id, adminId }, "Test soft-deleted");
 }
 
-// ── Publish / Unpublish ───────────────────────────────────────────────────────
+// ── Publish / Unpublish ──────────────────────────────────────────────────────
 
 export async function publishTest(id: string, adminId: string) {
   const test = await requireTest(id);
@@ -270,7 +270,7 @@ export async function unpublishTest(id: string, adminId: string) {
   return updated;
 }
 
-// ── Sections ──────────────────────────────────────────────────────────
+// ── Sections ─────────────────────────────────────────────────────────────────
 
 export async function createSection(testId: string, input: CreateSectionInput, adminId: string) {
   await requireDraft(testId);
@@ -356,7 +356,7 @@ export async function reorderSections(
   log.info({ testId, adminId }, "Sections reordered");
 }
 
-// ── Questions ──────────────────────────────────────────────────────────
+// ── Questions ────────────────────────────────────────────────────────────────
 
 export async function addQuestions(
   testId: string,
