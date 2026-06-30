@@ -90,7 +90,7 @@ const TEST_DETAIL_SELECT = {
   },
 } satisfies Prisma.TestSelect;
 
-// ── Helper ───────────────────────────────────────────────────────────────────
+// ── Helper ───────────────────────────────────────────────────────────
 
 async function requireTest(id: string) {
   const test = await prisma.test.findUnique({
@@ -112,16 +112,31 @@ async function requireDraft(id: string) {
   return test;
 }
 
-// ── CRUD ─────────────────────────────────────────────────────────────────────
+// ── CRUD ────────────────────────────────────────────────────────────
 
 export async function createTest(input: CreateTestInput, adminId: string) {
+  const testData: Prisma.TestUncheckedCreateInput = {
+    title: input.title,
+    description: input.description,
+    instructions: input.instructions,
+    exam: input.exam,
+    type: input.type,
+    durationMinutes: input.durationMinutes,
+    scheduledFrom: input.scheduledFrom,
+    scheduledUntil: input.scheduledUntil,
+    isFree: input.isFree,
+    price: input.price != null ? new Prisma.Decimal(input.price) : null,
+    subscriptionInclusive: input.subscriptionInclusive,
+    randomizeQuestions: input.randomizeQuestions,
+    randomizeOptions: input.randomizeOptions,
+    tags: input.tags,
+    thumbnailUrl: input.thumbnailUrl,
+    status: TestStatus.DRAFT,
+    createdById: adminId,
+  };
+
   const test = await prisma.test.create({
-    data: {
-      ...input,
-      price: input.price != null ? new Prisma.Decimal(input.price) : null,
-      status: TestStatus.DRAFT,
-      createdBy: { connect: { id: adminId } },
-    },
+    data: testData,
     select: TEST_LIST_SELECT,
   });
 
@@ -270,7 +285,7 @@ export async function unpublishTest(id: string, adminId: string) {
   return updated;
 }
 
-// ── Sections ─────────────────────────────────────────────────────────────────
+// ── Sections ──────────────────────────────────────────────────────────
 
 export async function createSection(testId: string, input: CreateSectionInput, adminId: string) {
   await requireDraft(testId);
@@ -356,7 +371,7 @@ export async function reorderSections(
   log.info({ testId, adminId }, "Sections reordered");
 }
 
-// ── Questions ────────────────────────────────────────────────────────────────
+// ── Questions ──────────────────────────────────────────────────────────
 
 export async function addQuestions(
   testId: string,
