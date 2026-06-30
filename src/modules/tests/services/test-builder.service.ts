@@ -120,7 +120,7 @@ export async function createTest(input: CreateTestInput, adminId: string) {
       ...input,
       price: input.price != null ? new Prisma.Decimal(input.price) : null,
       status: TestStatus.DRAFT,
-      createdById: adminId,
+      createdBy: { connect: { id: adminId } },
     },
     select: TEST_LIST_SELECT,
   });
@@ -290,7 +290,6 @@ export async function createSection(testId: string, input: CreateSectionInput, a
       testId,
       ...(input.subjectId && { subjectId: input.subjectId }),
       ...(input.description && { description: input.description }),
-      ...(input.timeLimitMinutes != null && { timeLimitMinutes: input.timeLimitMinutes }),
       ...(input.totalQuestions != null && { totalQuestions: input.totalQuestions }),
       ...(input.requiredAttempts != null && { requiredAttempts: input.requiredAttempts }),
     },
