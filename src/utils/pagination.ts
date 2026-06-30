@@ -43,13 +43,11 @@ export function parseSortOrder(
 }
 
 export interface PaginationMeta {
+  total: number;
   page: number;
   pageSize: number;
-  total: number;
   totalPages: number;
   hasMore: boolean;
-  hasNext: boolean;
-  hasPrev: boolean;
 }
 
 export function buildPaginationMeta(
@@ -57,14 +55,11 @@ export function buildPaginationMeta(
   page: number,
   pageSize: number
 ): PaginationMeta {
-  const totalPages = Math.ceil(total / pageSize);
   return {
+    total,
     page,
     pageSize,
-    total,
-    totalPages,
+    totalPages: Math.ceil(total / pageSize),
     hasMore: page * pageSize < total,
-    hasNext: page < totalPages,
-    hasPrev: page > 1,
   };
 }
