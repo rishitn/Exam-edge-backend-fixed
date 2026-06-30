@@ -1,4 +1,5 @@
 import { FastifyReply } from "fastify";
+import { buildPaginationMeta, PaginationMeta } from "./pagination";
 
 // =============================================================================
 // Response Helpers — every API response follows the same shape
@@ -8,13 +9,8 @@ import { FastifyReply } from "fastify";
 // Paginated:{ success: true, data: T[], meta: { total, page, pageSize, hasMore } }
 // =============================================================================
 
-export interface PaginationMeta {
-  total: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
-  hasMore: boolean;
-}
+export type { PaginationMeta } from "./pagination";
+export { buildPaginationMeta };
 
 export function sendSuccess<T>(
   reply: FastifyReply,
@@ -47,19 +43,4 @@ export function sendPaginated<T>(
 
 export function sendNoContent(reply: FastifyReply): FastifyReply {
   return reply.code(204).send();
-}
-
-// Build pagination meta from query params + total count
-export function buildPaginationMeta(
-  total: number,
-  page: number,
-  pageSize: number
-): PaginationMeta {
-  return {
-    total,
-    page,
-    pageSize,
-    totalPages: Math.ceil(total / pageSize),
-    hasMore: page * pageSize < total,
-  };
 }
