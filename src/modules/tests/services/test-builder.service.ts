@@ -90,7 +90,7 @@ const TEST_DETAIL_SELECT = {
   },
 } satisfies Prisma.TestSelect;
 
-// ── Helper ────────────────────────────────────────────────────────────────────
+// ── Helper ───────────────────────────────────────────────────────────
 
 async function requireTest(id: string) {
   const test = await prisma.test.findUnique({
@@ -112,7 +112,7 @@ async function requireDraft(id: string) {
   return test;
 }
 
-// ── CRUD ──────────────────────────────────────────────────────────────────────
+// ── CRUD ────────────────────────────────────────────────────────────
 
 export async function createTest(input: CreateTestInput, adminId: string) {
   const test = await prisma.test.create({
@@ -121,7 +121,7 @@ export async function createTest(input: CreateTestInput, adminId: string) {
       price: input.price != null ? new Prisma.Decimal(input.price) : null,
       status: TestStatus.DRAFT,
       createdById: adminId,
-    } as any,
+    },
     select: TEST_LIST_SELECT,
   });
 
@@ -270,7 +270,7 @@ export async function unpublishTest(id: string, adminId: string) {
   return updated;
 }
 
-// ── Sections ──────────────────────────────────────────────────────────────────
+// ── Sections ──────────────────────────────────────────────────────────
 
 export async function createSection(testId: string, input: CreateSectionInput, adminId: string) {
   await requireDraft(testId);
@@ -283,7 +283,17 @@ export async function createSection(testId: string, input: CreateSectionInput, a
   const order = input.order ?? (maxOrder._max.order ?? -1) + 1;
 
   const section = await prisma.testSection.create({
-    data: { ...input, testId, order } as any,
+    data: {
+      name: input.name,
+      order,
+      exam: input.exam,
+      testId,
+      ...(input.subjectId && { subjectId: input.subjectId }),
+      ...(input.description && { description: input.description }),
+      ...(input.timeLimitMinutes != null && { timeLimitMinutes: input.timeLimitMinutes }),
+      ...(input.totalQuestions != null && { totalQuestions: input.totalQuestions }),
+      ...(input.requiredAttempts != null && { requiredAttempts: input.requiredAttempts }),
+    },
   });
 
   log.info({ testId, sectionId: section.id, adminId }, "Section created");
@@ -347,7 +357,7 @@ export async function reorderSections(
   log.info({ testId, adminId }, "Sections reordered");
 }
 
-// ── Questions ─────────────────────────────────────────────────────────────────
+// ── Questions ──────────────────────────────────────────────────────────
 
 export async function addQuestions(
   testId: string,

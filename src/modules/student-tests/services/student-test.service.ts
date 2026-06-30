@@ -38,7 +38,7 @@ const TEST_DETAIL_SELECT = {
   ...TEST_CARD_SELECT,
   instructions: true,
   sections: {
-    where: { deletedAt: null } as any,
+    where: { deletedAt: null },
     orderBy: { order: "asc" as const },
     select: {
       id: true,
@@ -51,7 +51,7 @@ const TEST_DETAIL_SELECT = {
       requiredAttempts: true,
     },
   },
-} as any;
+} satisfies Prisma.TestSelect;
 
 // =============================================================================
 // Helpers
@@ -249,7 +249,12 @@ export async function getTestDetail(testId: string, userId: string | null) {
     throw Errors.notFound("Test not found", ErrorCode.TEST_NOT_FOUND);
   }
 
-  const access = await resolveAccess(test as any, userId);
+  // Extract only the fields needed by resolveAccess to avoid type mismatch
+  const access = await resolveAccess({
+    id: test.id,
+    isFree: test.isFree,
+    subscriptionInclusive: test.subscriptionInclusive,
+  }, userId);
 
   log.debug({ testId, userId, access }, "getTestDetail");
 
@@ -343,12 +348,12 @@ export async function getTestAttemptSummary(testId: string, userId: string) {
       percentile: true,
       startedAt: true,
       submittedAt: true,
-    } as any,
+    },
     orderBy: { startedAt: "desc" },
   });
 
-  const inProgress = (attempts as any[]).find((a) => a.status === "IN_PROGRESS") ?? null;
-  const completed = (attempts as any[]).filter((a) => a.status !== "IN_PROGRESS");
+  const inProgress = attempts.find((a) => a.status === "IN_PROGRESS") ?? null;
+  const completed = attempts.filter((a) => a.status !== "IN_PROGRESS");
 
   return {
     totalAttempts: attempts.length,
