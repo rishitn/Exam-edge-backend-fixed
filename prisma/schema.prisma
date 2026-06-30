@@ -1,0 +1,1087 @@
+// =============================================================================
+// ExamEdge — Complete Prisma Schema
+// PostgreSQL + Prisma ORM
+// Version: 1.0 | Designed for scalability to 1M+ users
+// =============================================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearch", "fullTextIndex"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum ExamType {
+  NEET
+  JEE_MAIN
+  JEE_ADVANCED
+  CUET
+}
+
+enum AuthProvider {
+  EMAIL
+  GOOGLE
+  PHONE_OTP
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum AdminRole {
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum AdminStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum QuestionType {
+  MCQ_SINGLE      // Single correct MCQ
+  MCQ_MULTIPLE    // Multiple correct MCQ
+  INTEGER         // Numerical / Integer answer
+  ASSERTION       // Assertion-Reasoning
+  MATCH_COLUMN    // Match the column
+}
+
+enum DifficultyLevel {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum QuestionStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum TestType {
+  FULL_MOCK           // Complete syllabus mock
+  SUBJECT_TEST        // Single subject
+  CHAPTER_TEST        // Single chapter
+  PREVIOUS_YEAR       // PYQ paper
+  SECTIONAL           // Specific sections
+  PART_TEST           // Part of syllabus
+}
+
+enum TestStatus {
+  DRAFT
+  PUBLISHED
+  UNPUBLISHED
+  ARCHIVED
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  AUTO_SUBMITTED    // Timer expired
+  FORCE_SUBMITTED   // Tab switch violation
+  ABANDONED         // Started but never submitted
+}
+
+enum OrderStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum OrderType {
+  TEST_PURCHASE
+  SUBSCRIPTION
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  PAUSED
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FLAT_INR
+}
+
+enum CouponApplicability {
+  ALL_TESTS
+  SPECIFIC_TEST
+  SUBSCRIPTION
+  ALL              // Both tests and subscriptions
+}
+
+enum CouponStatus {
+  ACTIVE
+  INACTIVE
+  EXPIRED
+}
+
+enum NotificationType {
+  TEST_PUBLISHED
+  RESULT_READY
+  SUBSCRIPTION_EXPIRING
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  RANK_UPDATED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  PUBLISH
+  UNPUBLISH
+  LOGIN
+  LOGOUT
+  BULK_UPLOAD
+  FORCE_SUBMIT
+}
+
+// =============================================================================
+// USERS (Students)
+// =============================================================================
+
+model User {
+  id                String        @id @default(cuid())
+  name              String
+  email             String?       @unique
+  mobile            String?       @unique
+  passwordHash      String?       // null for OAuth users
+  authProvider      AuthProvider  @default(EMAIL)
+  googleId          String?       @unique
+  avatarUrl         String?
+  emailVerified     Boolean       @default(false)
+  mobileVerified    Boolean       @default(false)
+  emailVerifyToken  String?
+  status            UserStatus    @default(ACTIVE)
+
+  // Exam targeting (can target multiple)
+  targetExams       ExamType[]
+
+  // Metadata
+  city              String?
+  state             String?
+  schoolCollegeName String?
+  preparationYear   Int?          // Year they're targeting (e.g. 2025, 2026)
+
+  // Security
+  loginAttempts     Int           @default(0)
+  lockedUntil       DateTime?
+  lastLoginAt       DateTime?
+  lastLoginIp       String?
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  deletedAt         DateTime?     // Soft delete
+
+  // Relations
+  subscription      Subscription?
+  attempts          TestAttempt[]
+  orders            Order[]
+  otpRequests       OtpRequest[]
+  refreshTokens     RefreshToken[]
+  notifications     Notification[]
+  bookmarks         QuestionBookmark[]
+
+  @@index([email])
+  @@index([mobile])
+  @@index([status])
+  @@index([createdAt])
+  @@map("users")
+}
+
+// =============================================================================
+// ADMINS
+// =============================================================================
+
+model Admin {
+  id              String        @id @default(cuid())
+  name            String
+  email           String        @unique
+  passwordHash    String
+  role            AdminRole     @default(ADMIN)
+  status          AdminStatus   @default(ACTIVE)
+  avatarUrl       String?
+
+  // Scope — which exams this admin can manage
+  assignedExams   ExamType[]
+
+  // 2FA (mandatory for Super Admin)
+  totpSecret      String?
+  totpEnabled     Boolean       @default(false)
+
+  // Security
+  loginAttempts   Int           @default(0)
+  lockedUntil     DateTime?
+  lastLoginAt     DateTime?
+  lastLoginIp     String?
+
+  // Created by (null = seeded super admin)
+  createdById     String?
+  createdBy       Admin?        @relation("AdminCreatedBy", fields: [createdById], references: [id])
+  createdAdmins   Admin[]       @relation("AdminCreatedBy")
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  refreshTokens   AdminRefreshToken[]
+  questions       Question[]
+  tests           Test[]
+  coupons         Coupon[]
+  auditLogs       AuditLog[]
+  subscriptionPlans SubscriptionPlan[]
+
+  @@index([email])
+  @@index([role])
+  @@index([status])
+  @@map("admins")
+}
+
+// =============================================================================
+// AUTHENTICATION — Tokens & OTP
+// =============================================================================
+
+model RefreshToken {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token       String    @unique
+  deviceInfo  String?   // Browser/device fingerprint
+  ipAddress   String?
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model AdminRefreshToken {
+  id          String    @id @default(cuid())
+  adminId     String
+  admin       Admin     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  token       String    @unique
+  deviceInfo  String?
+  ipAddress   String?
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([adminId])
+  @@index([token])
+  @@map("admin_refresh_tokens")
+}
+
+model OtpRequest {
+  id          String    @id @default(cuid())
+  mobile      String
+  otp         String    // Hashed
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id])
+  purpose     String    // "LOGIN" | "REGISTER" | "RESET"
+  attempts    Int       @default(0)
+  verified    Boolean   @default(false)
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+
+  @@index([mobile])
+  @@index([expiresAt])
+  @@map("otp_requests")
+}
+
+// =============================================================================
+// SUBJECTS, CHAPTERS, TOPICS — Taxonomy
+// =============================================================================
+
+model Subject {
+  id          String    @id @default(cuid())
+  name        String
+  exam        ExamType
+  code        String    // e.g. "PHY", "CHEM", "BIO"
+  order       Int       @default(0)
+  isActive    Boolean   @default(true)
+
+  chapters    Chapter[]
+  questions   Question[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([exam, code])
+  @@index([exam])
+  @@map("subjects")
+}
+
+model Chapter {
+  id          String    @id @default(cuid())
+  name        String
+  subjectId   String
+  subject     Subject   @relation(fields: [subjectId], references: [id])
+  order       Int       @default(0)
+  isActive    Boolean   @default(true)
+
+  topics      Topic[]
+  questions   Question[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([subjectId])
+  @@map("chapters")
+}
+
+model Topic {
+  id          String    @id @default(cuid())
+  name        String
+  chapterId   String
+  chapter     Chapter   @relation(fields: [chapterId], references: [id])
+  order       Int       @default(0)
+  isActive    Boolean   @default(true)
+
+  questions   Question[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([chapterId])
+  @@map("topics")
+}
+
+// =============================================================================
+// QUESTION BANK
+// =============================================================================
+
+model Question {
+  id              String          @id @default(cuid())
+  exam            ExamType
+  subjectId       String
+  subject         Subject         @relation(fields: [subjectId], references: [id])
+  chapterId       String
+  chapter         Chapter         @relation(fields: [chapterId], references: [id])
+  topicId         String?
+  topic           Topic?          @relation(fields: [topicId], references: [id])
+
+  type            QuestionType
+  difficulty      DifficultyLevel @default(MEDIUM)
+  status          QuestionStatus  @default(ACTIVE)
+
+  // Content — stored as JSON for flexibility across question types
+  // Structure varies by type (see QUESTION_CONTENT_SPEC.md)
+  content         Json
+  // {
+  //   "text": "Question body text",
+  //   "imageUrl": "https://...",        // optional S3 URL
+  //   "imageAlt": "Description",
+  //   "passage": "...",                 // for passage-based (Phase 2)
+  // }
+
+  options         Json?
+  // MCQ_SINGLE / MCQ_MULTIPLE:
+  // [{ "id": "A", "text": "...", "imageUrl": "..." }, ...]
+  //
+  // ASSERTION:
+  // { "assertion": "...", "reason": "...", "options": [...] }
+  //
+  // MATCH_COLUMN:
+  // { "leftCol": [{ "id": "1", "text": "..." }],
+  //   "rightCol": [{ "id": "P", "text": "..." }] }
+  //
+  // INTEGER: null (no options)
+
+  correctAnswer   Json
+  // MCQ_SINGLE:   "A"
+  // MCQ_MULTIPLE: ["A", "C"]
+  // INTEGER:      42  or  3.14
+  // ASSERTION:    "A"
+  // MATCH_COLUMN: { "1": "P", "2": "Q", "3": "R" }
+
+  solution        Json
+  // {
+  //   "text": "Detailed explanation...",
+  //   "imageUrl": "https://...",   // optional
+  //   "videoUrl": "https://...",   // Phase 2
+  // }
+
+  // Metadata
+  tags            String[]
+  sourceYear      Int?            // e.g. 2019 for PYQ
+  sourceExam      String?         // e.g. "NEET 2019" for PYQ
+  isVerified      Boolean         @default(false)
+  usageCount      Int             @default(0)  // How many tests use this
+
+  // Authorship
+  createdById     String
+  createdBy       Admin           @relation(fields: [createdById], references: [id])
+  verifiedById    String?
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  deletedAt       DateTime?       // Soft delete
+
+  // Relations
+  testQuestions   TestQuestion[]
+  attemptAnswers  AttemptAnswer[]
+  bookmarks       QuestionBookmark[]
+  bulkUploadItems BulkUploadItem[]
+
+  @@index([exam])
+  @@index([subjectId])
+  @@index([chapterId])
+  @@index([topicId])
+  @@index([type])
+  @@index([difficulty])
+  @@index([status])
+  @@index([createdById])
+  @@index([tags])
+  @@index([createdAt])
+  @@map("questions")
+}
+
+// =============================================================================
+// BULK UPLOAD
+// =============================================================================
+
+model BulkUpload {
+  id              String          @id @default(cuid())
+  adminId         String
+  fileName        String
+  s3Url           String
+  exam            ExamType
+  totalRows       Int
+  successCount    Int             @default(0)
+  failureCount    Int             @default(0)
+  status          String          // PROCESSING | COMPLETED | FAILED
+  errorReportUrl  String?         // S3 URL to error CSV
+
+  items           BulkUploadItem[]
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([adminId])
+  @@index([status])
+  @@map("bulk_uploads")
+}
+
+model BulkUploadItem {
+  id            String      @id @default(cuid())
+  bulkUploadId  String
+  bulkUpload    BulkUpload  @relation(fields: [bulkUploadId], references: [id])
+  rowNumber     Int
+  questionId    String?
+  question      Question?   @relation(fields: [questionId], references: [id])
+  status        String      // SUCCESS | FAILED
+  errorMessage  String?
+  rawData       Json        // Original row data for debugging
+
+  @@index([bulkUploadId])
+  @@map("bulk_upload_items")
+}
+
+// =============================================================================
+// TESTS
+// =============================================================================
+
+model Test {
+  id                    String      @id @default(cuid())
+  title                 String
+  description           String?
+  instructions          String?     // Shown on pre-test screen
+  exam                  ExamType
+  type                  TestType
+  status                TestStatus  @default(DRAFT)
+
+  // Duration
+  durationMinutes       Int
+
+  // Scheduling
+  scheduledFrom         DateTime?
+  scheduledUntil        DateTime?
+
+  // Pricing
+  isFree                Boolean     @default(false)
+  price                 Decimal?    @db.Decimal(10, 2)
+  subscriptionInclusive Boolean     @default(true) // Available to subscribers
+
+  // Randomization (Phase 2 ready)
+  randomizeQuestions    Boolean     @default(false)
+  randomizeOptions      Boolean     @default(false)
+
+  // Stats (denormalized for performance)
+  totalAttempts         Int         @default(0)
+  avgScore              Decimal?    @db.Decimal(5, 2)
+  totalQuestions        Int         @default(0)  // Computed on publish
+  totalMarks            Decimal?    @db.Decimal(8, 2)  // Computed on publish
+
+  // SEO / Discovery
+  tags                  String[]
+  thumbnailUrl          String?
+
+  // Authorship
+  createdById           String
+  createdBy             Admin       @relation(fields: [createdById], references: [id])
+  publishedAt           DateTime?
+  publishedById         String?
+
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  deletedAt             DateTime?
+
+  // Relations
+  sections              TestSection[]
+  testQuestions         TestQuestion[]
+  attempts              TestAttempt[]
+  orders                Order[]
+  coupons               CouponTest[]
+  leaderboard           Leaderboard?
+
+  @@index([exam])
+  @@index([type])
+  @@index([status])
+  @@index([isFree])
+  @@index([scheduledFrom])
+  @@index([scheduledUntil])
+  @@index([createdById])
+  @@index([createdAt])
+  @@map("tests")
+}
+
+// =============================================================================
+// TEST SECTIONS
+// Each test can have multiple sections (e.g., Physics, Chemistry, Biology)
+// Each section has its own marking scheme
+// =============================================================================
+
+model TestSection {
+  id                String          @id @default(cuid())
+  testId            String
+  test              Test            @relation(fields: [testId], references: [id], onDelete: Cascade)
+  name              String          // e.g. "Physics", "Section A"
+  order             Int             @default(0)
+  exam              ExamType
+  subjectId         String?
+  description       String?
+
+  // Marking scheme — configurable per section per question type
+  markingSchemes    SectionMarkingScheme[]
+
+  // Optional: max questions a student must attempt from this section
+  // (JEE Advanced has internal choices)
+  totalQuestions    Int?            // Total questions in section
+  requiredAttempts  Int?            // Min questions to attempt (null = attempt all)
+
+  testQuestions     TestQuestion[]
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([testId])
+  @@index([order])
+  @@map("test_sections")
+}
+
+// Marking scheme is stored per question type within a section
+// This handles: NEET (+4/-1), JEE Main (+4/-1 for MCQ, +4/0 for integer), etc.
+model SectionMarkingScheme {
+  id                String          @id @default(cuid())
+  sectionId         String
+  section           TestSection     @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  questionType      QuestionType
+  correctMarks      Decimal         @db.Decimal(5, 2)
+  incorrectMarks    Decimal         @db.Decimal(5, 2)  // Negative value e.g. -1.00
+  unattemptedMarks  Decimal         @db.Decimal(5, 2)  @default(0)
+  partialMarking    Boolean         @default(false)     // For MCQ_MULTIPLE
+  partialMarkValue  Decimal?        @db.Decimal(5, 2)   // Per correct option in partial
+
+  @@unique([sectionId, questionType])
+  @@map("section_marking_schemes")
+}
+
+// =============================================================================
+// TEST QUESTIONS (Junction)
+// =============================================================================
+
+model TestQuestion {
+  id            String        @id @default(cuid())
+  testId        String
+  test          Test          @relation(fields: [testId], references: [id], onDelete: Cascade)
+  sectionId     String
+  section       TestSection   @relation(fields: [sectionId], references: [id])
+  questionId    String
+  question      Question      @relation(fields: [questionId], references: [id])
+  order         Int           @default(0)
+
+  // Override marking for this specific question (overrides section scheme)
+  markingOverride Json?
+  // { "correctMarks": 2, "incorrectMarks": -0.5, "unattemptedMarks": 0 }
+
+  createdAt     DateTime      @default(now())
+
+  @@unique([testId, questionId])  // A question can't appear twice in same test
+  @@index([testId])
+  @@index([sectionId])
+  @@index([questionId])
+  @@index([order])
+  @@map("test_questions")
+}
+
+// =============================================================================
+// TEST ATTEMPTS
+// =============================================================================
+
+model TestAttempt {
+  id              String          @id @default(cuid())
+  userId          String
+  user            User            @relation(fields: [userId], references: [id])
+  testId          String
+  test            Test            @relation(fields: [testId], references: [id])
+
+  status          AttemptStatus   @default(IN_PROGRESS)
+
+  // Timing
+  startedAt       DateTime        @default(now())
+  submittedAt     DateTime?
+  timeSpentSeconds Int            @default(0)
+
+  // Anti-cheat
+  tabSwitchCount  Int             @default(0)
+  cheatFlag       Boolean         @default(false)
+  cheatReason     String?         // "TAB_SWITCH_LIMIT" | "COPY_DETECTED" etc.
+  ipAddress       String?
+  userAgent       String?
+
+  // Scores (computed on submission)
+  rawScore        Decimal?        @db.Decimal(8, 2)
+  totalMarks      Decimal?        @db.Decimal(8, 2)
+  correctCount    Int?
+  incorrectCount  Int?
+  unattemptedCount Int?
+  accuracyPct     Decimal?        @db.Decimal(5, 2)
+
+  // Ranking (updated async via Redis → DB sync)
+  rank            Int?
+  percentile      Decimal?        @db.Decimal(5, 2)
+  totalParticipants Int?          // Snapshot at time of rank computation
+
+  // Section-wise scores (JSON for flexibility)
+  sectionScores   Json?
+  // [{ "sectionId": "...", "sectionName": "Physics", "score": 120, "total": 180 }]
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  answers         AttemptAnswer[]
+
+  @@unique([userId, testId])  // One attempt per user per test (for MVP)
+  @@index([userId])
+  @@index([testId])
+  @@index([status])
+  @@index([startedAt])
+  @@index([rank])
+  @@map("test_attempts")
+}
+
+// =============================================================================
+// ATTEMPT ANSWERS
+// One row per question per attempt — auto-saved and updated
+// =============================================================================
+
+model AttemptAnswer {
+  id                String        @id @default(cuid())
+  attemptId         String
+  attempt           TestAttempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionId        String
+  question          Question      @relation(fields: [questionId], references: [id])
+  testQuestionId    String        // For ordering / section reference
+
+  // Student's answer — matches correctAnswer JSON shape per question type
+  studentAnswer     Json?         // null = unattempted
+  isMarkedReview    Boolean       @default(false)
+  isAttempted       Boolean       @default(false)
+
+  // Computed on submission
+  isCorrect         Boolean?
+  isPartiallyCorrect Boolean?     // For MCQ_MULTIPLE with partial marking
+  marksAwarded      Decimal?      @db.Decimal(5, 2)
+
+  // Time tracking per question
+  timeSpentSeconds  Int           @default(0)
+  visitCount        Int           @default(0)  // How many times student visited this Q
+
+  // Auto-save tracking
+  lastSavedAt       DateTime?
+  savedCount        Int           @default(0)
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+  @@index([questionId])
+  @@index([isCorrect])
+  @@map("attempt_answers")
+}
+
+// =============================================================================
+// LEADERBOARD
+// Real-time Redis sorted set → periodically synced to DB
+// =============================================================================
+
+model Leaderboard {
+  id              String    @id @default(cuid())
+  testId          String    @unique
+  test            Test      @relation(fields: [testId], references: [id])
+  totalEntries    Int       @default(0)
+  topScore        Decimal?  @db.Decimal(8, 2)
+  avgScore        Decimal?  @db.Decimal(8, 2)
+  lastSyncedAt    DateTime  @default(now())
+
+  entries         LeaderboardEntry[]
+
+  @@map("leaderboards")
+}
+
+model LeaderboardEntry {
+  id              String      @id @default(cuid())
+  leaderboardId   String
+  leaderboard     Leaderboard @relation(fields: [leaderboardId], references: [id], onDelete: Cascade)
+  userId          String
+  attemptId       String      @unique
+  score           Decimal     @db.Decimal(8, 2)
+  rank            Int
+  percentile      Decimal     @db.Decimal(5, 2)
+  submittedAt     DateTime
+
+  @@unique([leaderboardId, userId])
+  @@index([leaderboardId, rank])
+  @@index([leaderboardId, score])
+  @@map("leaderboard_entries")
+}
+
+// =============================================================================
+// SUBSCRIPTION PLANS
+// =============================================================================
+
+model SubscriptionPlan {
+  id              String    @id @default(cuid())
+  name            String    // e.g. "Pro Monthly", "Pro Yearly"
+  description     String?
+  durationDays    Int       // 30, 365
+  price           Decimal   @db.Decimal(10, 2)
+  originalPrice   Decimal?  @db.Decimal(10, 2)  // For showing "was ₹X"
+  isActive        Boolean   @default(true)
+  isPopular       Boolean   @default(false)      // "Most Popular" badge
+
+  // Features list (JSON for flexibility)
+  features        Json?
+  // ["Unlimited tests", "Detailed solutions", "Rank access"]
+
+  // Razorpay plan ID (for recurring subscriptions)
+  razorpayPlanId  String?
+
+  createdById     String
+  createdBy       Admin     @relation(fields: [createdById], references: [id])
+
+  subscriptions   Subscription[]
+  orders          Order[]
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([isActive])
+  @@map("subscription_plans")
+}
+
+// =============================================================================
+// SUBSCRIPTIONS (Student → Plan)
+// =============================================================================
+
+model Subscription {
+  id              String              @id @default(cuid())
+  userId          String              @unique  // One active subscription per user
+  user            User                @relation(fields: [userId], references: [id])
+  planId          String
+  plan            SubscriptionPlan    @relation(fields: [planId], references: [id])
+
+  status          SubscriptionStatus  @default(ACTIVE)
+
+  startedAt       DateTime            @default(now())
+  expiresAt       DateTime
+  cancelledAt     DateTime?
+  cancelReason    String?
+
+  // Razorpay subscription ID for recurring billing
+  razorpaySubscriptionId String?
+
+  // Granted by (if manually granted by super admin)
+  grantedById     String?
+
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  orders          Order[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("subscriptions")
+}
+
+// =============================================================================
+// ORDERS & PAYMENTS
+// =============================================================================
+
+model Order {
+  id                    String        @id @default(cuid())
+  userId                String
+  user                  User          @relation(fields: [userId], references: [id])
+  type                  OrderType
+
+  // What's being purchased
+  testId                String?
+  test                  Test?         @relation(fields: [testId], references: [id])
+  planId                String?
+  plan                  SubscriptionPlan? @relation(fields: [planId], references: [id])
+  subscriptionId        String?
+  subscription          Subscription? @relation(fields: [subscriptionId], references: [id])
+
+  // Pricing
+  originalAmount        Decimal       @db.Decimal(10, 2)
+  discountAmount        Decimal       @db.Decimal(10, 2) @default(0)
+  finalAmount           Decimal       @db.Decimal(10, 2)
+  currency              String        @default("INR")
+
+  // Coupon applied
+  couponId              String?
+  coupon                Coupon?       @relation(fields: [couponId], references: [id])
+  couponCode            String?       // Snapshot of code at time of order
+
+  // Razorpay
+  razorpayOrderId       String?       @unique
+  razorpayPaymentId     String?       @unique
+  razorpaySignature     String?
+
+  status                OrderStatus   @default(PENDING)
+  failureReason         String?
+
+  // Idempotency
+  idempotencyKey        String        @unique @default(cuid())
+
+  paidAt                DateTime?
+  refundedAt            DateTime?
+  refundAmount          Decimal?      @db.Decimal(10, 2)
+  refundReason          String?
+
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([testId])
+  @@index([status])
+  @@index([razorpayOrderId])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+// =============================================================================
+// COUPONS
+// =============================================================================
+
+model Coupon {
+  id              String                @id @default(cuid())
+  code            String                @unique
+  description     String?
+  discountType    DiscountType
+  discountValue   Decimal               @db.Decimal(10, 2)  // % or INR
+  maxDiscountINR  Decimal?              @db.Decimal(10, 2)  // Cap for % discounts
+
+  applicableTo    CouponApplicability
+  status          CouponStatus          @default(ACTIVE)
+
+  // Usage limits
+  maxUses         Int?                  // null = unlimited
+  usedCount       Int                   @default(0)
+  perUserLimit    Int                   @default(1)
+
+  // Validity
+  validFrom       DateTime              @default(now())
+  validUntil      DateTime?
+
+  // Minimum order value
+  minOrderValue   Decimal?              @db.Decimal(10, 2)
+
+  // Authorship
+  createdById     String
+  createdBy       Admin                 @relation(fields: [createdById], references: [id])
+
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  // Relations
+  specificTests   CouponTest[]
+  orders          Order[]
+  usages          CouponUsage[]
+
+  @@index([code])
+  @@index([status])
+  @@index([validUntil])
+  @@map("coupons")
+}
+
+// Coupon ↔ Test (for SPECIFIC_TEST applicability)
+model CouponTest {
+  id        String  @id @default(cuid())
+  couponId  String
+  coupon    Coupon  @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  testId    String
+  test      Test    @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@unique([couponId, testId])
+  @@map("coupon_tests")
+}
+
+// Per-user coupon usage tracking
+model CouponUsage {
+  id          String    @id @default(cuid())
+  couponId    String
+  coupon      Coupon    @relation(fields: [couponId], references: [id])
+  userId      String
+  orderId     String
+  usedAt      DateTime  @default(now())
+
+  @@unique([couponId, userId, orderId])
+  @@index([couponId])
+  @@index([userId])
+  @@map("coupon_usages")
+}
+
+// =============================================================================
+// NOTIFICATIONS
+// =============================================================================
+
+model Notification {
+  id          String              @id @default(cuid())
+  userId      String
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        NotificationType
+  title       String
+  body        String
+  imageUrl    String?
+  actionUrl   String?
+  isRead      Boolean             @default(false)
+  readAt      DateTime?
+  metadata    Json?               // Extra type-specific data
+
+  createdAt   DateTime            @default(now())
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+// =============================================================================
+// QUESTION BOOKMARKS (Phase 2 ready)
+// =============================================================================
+
+model QuestionBookmark {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questionId  String
+  question    Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  note        String?
+  createdAt   DateTime  @default(now())
+
+  @@unique([userId, questionId])
+  @@index([userId])
+  @@map("question_bookmarks")
+}
+
+// =============================================================================
+// AUDIT LOGS
+// Every admin action tracked for compliance and debugging
+// =============================================================================
+
+model AuditLog {
+  id            String        @id @default(cuid())
+  adminId       String
+  admin         Admin         @relation(fields: [adminId], references: [id])
+  action        AuditAction
+  entityType    String        // "Question" | "Test" | "Admin" | "Coupon" etc.
+  entityId      String?
+  description   String?
+  metadata      Json?         // Before/after state for UPDATE actions
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime      @default(now())
+
+  @@index([adminId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// =============================================================================
+// PLATFORM SETTINGS (Super Admin controlled)
+// =============================================================================
+
+model PlatformSetting {
+  id          String    @id @default(cuid())
+  key         String    @unique
+  value       Json
+  description String?
+  updatedById String?
+  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime  @default(now())
+
+  // Example keys:
+  // "maintenance_mode": false
+  // "max_tab_switches_allowed": 1
+  // "otp_expiry_minutes": 10
+  // "free_test_attempt_limit": null (null = unlimited)
+  // "razorpay_webhook_secret": "..."
+
+  @@map("platform_settings")
+}
+
+// =============================================================================
+// MEDIA / S3 ASSET REGISTRY
+// Track all uploaded files for lifecycle management
+// =============================================================================
+
+model MediaAsset {
+  id            String    @id @default(cuid())
+  s3Key         String    @unique
+  s3Bucket      String
+  publicUrl     String
+  mimeType      String
+  sizeBytes     Int
+  uploadedById  String    // Admin ID
+  entityType    String?   // "Question" | "Solution" | "Test"
+  entityId      String?
+  isOrphaned    Boolean   @default(false)  // No longer referenced
+  createdAt     DateTime  @default(now())
+
+  @@index([entityType, entityId])
+  @@index([uploadedById])
+  @@index([isOrphaned])
+  @@map("media_assets")
+}
