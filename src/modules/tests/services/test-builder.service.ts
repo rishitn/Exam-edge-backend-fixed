@@ -115,6 +115,10 @@ async function requireDraft(id: string) {
 // ── CRUD ────────────────────────────────────────────────────────────
 
 export async function createTest(input: CreateTestInput, adminId: string) {
+  if (!input.title || input.title.trim() === "") {
+    throw Errors.badRequest("Test title is required.", ErrorCode.VALIDATION_ERROR);
+  }
+
   const testData: Prisma.TestUncheckedCreateInput = {
     title: input.title,
     description: input.description,
