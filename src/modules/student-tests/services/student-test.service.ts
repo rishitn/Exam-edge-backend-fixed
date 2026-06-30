@@ -249,7 +249,7 @@ export async function getTestDetail(testId: string, userId: string | null) {
     throw Errors.notFound("Test not found", ErrorCode.TEST_NOT_FOUND);
   }
 
-  const access = await resolveAccess(test, userId);
+  const access = await resolveAccess(test as any, userId);
 
   log.debug({ testId, userId, access }, "getTestDetail");
 
@@ -347,8 +347,8 @@ export async function getTestAttemptSummary(testId: string, userId: string) {
     orderBy: { startedAt: "desc" },
   });
 
-  const inProgress = attempts.find((a) => a.status === "IN_PROGRESS") ?? null;
-  const completed = attempts.filter((a) => a.status !== "IN_PROGRESS");
+  const inProgress = (attempts as any[]).find((a) => a.status === "IN_PROGRESS") ?? null;
+  const completed = (attempts as any[]).filter((a) => a.status !== "IN_PROGRESS");
 
   return {
     totalAttempts: attempts.length,

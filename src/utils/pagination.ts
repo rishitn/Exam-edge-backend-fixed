@@ -47,14 +47,15 @@ export interface PaginationMeta {
   pageSize: number;
   total: number;
   totalPages: number;
+  hasMore: boolean;
   hasNext: boolean;
   hasPrev: boolean;
 }
 
 export function buildPaginationMeta(
+  total: number,
   page: number,
-  pageSize: number,
-  total: number
+  pageSize: number
 ): PaginationMeta {
   const totalPages = Math.ceil(total / pageSize);
   return {
@@ -62,6 +63,7 @@ export function buildPaginationMeta(
     pageSize,
     total,
     totalPages,
+    hasMore: page * pageSize < total,
     hasNext: page < totalPages,
     hasPrev: page > 1,
   };

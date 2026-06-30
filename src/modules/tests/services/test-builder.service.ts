@@ -283,7 +283,7 @@ export async function createSection(testId: string, input: CreateSectionInput, a
   const order = input.order ?? (maxOrder._max.order ?? -1) + 1;
 
   const section = await prisma.testSection.create({
-    data: { ...input, testId, order },
+    data: { ...input, testId, order } as any,
   });
 
   log.info({ testId, sectionId: section.id, adminId }, "Section created");
