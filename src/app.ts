@@ -7,7 +7,7 @@ import { errorHandlerPlugin } from "./plugins/error-handler";
 import { securityPlugin } from "./plugins/security";
 import { rateLimiterPlugin } from "./plugins/rate-limiter";
 import { requestContextPlugin } from "./plugins/request-context";
-
+import cors from "@fastify/cors";
 // Routes
 import { healthRoutes } from "./modules/health/health.routes";
 import { authRoutes } from "./modules/auth/auth.routes";
@@ -40,7 +40,12 @@ export async function buildApp(): Promise<FastifyInstance> {
       },
     },
   });
-
+// Enable CORS for the Vercel frontend
+  await app.register(cors, {
+    origin: "https://exam-edge-frontend.vercel.app",
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    credentials: true,
+  });
   // ── Plugins (order matters) ─────────────────────────────────────────────────
   await app.register(requestContextPlugin);
   await app.register(securityPlugin);
