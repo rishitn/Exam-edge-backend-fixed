@@ -10,7 +10,7 @@ import { env } from "../config/env";
 export async function securityPlugin(app: FastifyInstance): Promise<void> {
   // CORS — only allow our own frontends
   await app.register(fastifyCors, {
-    origin: [env.FRONTEND_URL, env.ADMIN_URL, env.SUPER_ADMIN_URL],
+   origin: [env.FRONTEND_URL, env.ADMIN_URL, env.SUPER_ADMIN_URL, "https://exam-edge-frontend.vercel.app"],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Request-ID"],
     exposedHeaders: ["X-Request-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining"],
